@@ -1,0 +1,150 @@
+{
+	"cars": [{
+			"PutRequest": {
+				"Item": {
+					"id": {
+						"S": "1"
+					},
+					"make": {
+						"S": "BMW"
+					},
+					"model": {
+						"S": "3 Series"
+					},
+					"year": {
+						"S": "2021"
+					},
+					"cartype": {
+						"S": "Sedan"
+					}
+				}
+			}
+		},
+		{
+			"PutRequest": {
+				"Item": {
+					"id": {
+						"S": "2"
+					},
+					"make": {
+						"S": "BMW"
+					},
+					"model": {
+						"S": "M3"
+					},
+					"year": {
+						"S": "2020"
+					},
+					"cartype": {
+						"S": "Sedan"
+					}
+				}
+			}
+		},
+		{
+			"PutRequest": {
+				"Item": {
+					"id": {
+						"S": "3"
+					},
+					"make": {
+						"S": "BMW"
+					},
+					"model": {
+						"S": "X7"
+					},
+					"year": {
+						"S": "2020"
+					},
+					"cartype": {
+						"S": "SUV"
+					}
+				}
+			}
+		},
+		{
+			"PutRequest": {
+				"Item": {
+					"id": {
+						"S": "4"
+					},
+					"make": {
+						"S": "BMW"
+					},
+					"model": {
+						"S": "Z4"
+					},
+					"year": {
+						"S": "2021"
+					},
+					"cartype": {
+						"S": "Convertible"
+					}
+				}
+			}
+		},
+		{
+			"PutRequest": {
+				"Item": {
+					"id": {
+						"S": "5"
+					},
+					"make": {
+						"S": "Ford"
+					},
+					"model": {
+						"S": "Mustang"
+					},
+					"year": {
+						"S": "2019"
+					},
+					"cartype": {
+						"S": "Sedan"
+					}
+				}
+			}
+		},
+		{
+			"PutRequest": {
+				"Item": {
+					"id": {
+						"S": "6"
+					},
+					"make": {
+						"S": "Ford"
+					},
+					"model": {
+						"S": "F-150"
+					},
+					"year": {
+						"S": "2022"
+					},
+					"cartype": {
+						"S": "F-150"
+					}
+				}
+			}
+		},
+		{
+			"PutRequest": {
+				"Item": {
+					"id": {
+						"S": "7"
+					},
+					"make": {
+						"S": "Ford"
+					},
+					"model": {
+						"S": "Explorer"
+					},
+					"year": {
+						"S": "2021"
+					},
+					"cartype": {
+						"S": "SUV"
+					}
+				}
+			}
+		}
+	]
+}

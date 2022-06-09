@@ -1,0 +1,257 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: AWS CloudFormation Template To Create a DynamoDB
+
+Parameters:
+  S3BucketName:
+    Type: String
+    AllowedPattern : .+
+    MinLength: 1
+
+Resources:
+  scheduleVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.50.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  routeTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'scheduleVPC'
+
+  privateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'scheduleVPC'
+      CidrBlock: 10.50.0.0/24
+      AvailabilityZone: !Select
+        - '0'
+        - !GetAZs ''
+
+  privateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'scheduleVPC'
+      CidrBlock: 10.50.1.0/24
+      AvailabilityZone: !Select
+        - '1'
+        - !GetAZs ''
+
+  privateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'privateSubnet1'
+      RouteTableId: !Ref 'routeTable'
+
+  privateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'privateSubnet2'
+      RouteTableId: !Ref 'routeTable'
+
+  securityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Limits security group ingress and egress traffic for the Amazon MQ instance
+      VpcId: !Ref 'scheduleVPC'
+
+  DynamoDBEndpoint:
+    Type: "AWS::EC2::VPCEndpoint"
+    Properties:
+      RouteTableIds:
+        - !Ref routeTable
+      ServiceName:
+        !Sub "com.amazonaws.${AWS::Region}.dynamodb"
+      VpcId: !Ref scheduleVPC
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Description: Role to provide access to S3
+      Policies:
+        - PolicyName: EmbeddedInlinePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: '*'
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      RoleName: LambdaRoleThreeTierApp
+
+
+#create DynamoDB table named schedule
+  scheduleDDB:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: cars
+      AttributeDefinitions:
+      -
+          AttributeName: id
+          AttributeType: S
+      KeySchema:
+      -
+        AttributeName: id
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      BillingMode: PROVISIONED
+      TableClass: STANDARD
+
+  FetchAllDataLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: all_data.zip
+      FunctionName: fetch_all_data
+      Handler: lambda_function.lambda_handler
+      MemorySize: 128
+      Role:
+        Fn::GetAtt:
+          - LambdaRole
+          - Arn
+      Timeout: 90
+      Runtime: python3.9
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref securityGroup
+        SubnetIds:
+          - !Ref privateSubnet1
+          - !Ref privateSubnet2
+
+  FetchSpecificDataLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: specific_data.zip
+      FunctionName: fetch_specific_data
+      Handler: lambda_function.lambda_handler
+      MemorySize: 128
+      Role:
+        Fn::GetAtt:
+          - LambdaRole
+          - Arn
+      Timeout: 90
+      Runtime: python3.9
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref securityGroup
+        SubnetIds:
+          - !Ref privateSubnet1
+          - !Ref privateSubnet2
+
+  apiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Description: Example API Gateway
+      EndpointConfiguration:
+        Types:
+          - EDGE
+      Name: carsAPI
+
+  apiGatewayRootMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: GET
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations
+          - lambdaArn: !GetAtt FetchAllDataLambda.Arn
+        "IntegrationResponses": [{
+          "StatusCode": 200
+        }]
+      ResourceId: !GetAtt apiGateway.RootResourceId
+      RestApiId: !Ref apiGateway
+      "MethodResponses": [{
+        "StatusCode": 200
+      }]
+
+  lambdaApiGatewayInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt FetchAllDataLambda.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${apiGateway}/*/GET/
+
+  apiGatewaySpecificResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref apiGateway
+      ParentId: !GetAtt
+          - apiGateway
+          - RootResourceId
+      PathPart: type
+
+  apiGatewaySpecificResourceProxy:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref apiGateway
+      ParentId: !Ref apiGatewaySpecificResource
+      PathPart: "{proxy+}"
+
+  apiGatewaySpecificMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: ANY
+      Integration:
+        IntegrationHttpMethod: ANY
+        Type: AWS_PROXY
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn2}/invocations
+          - lambdaArn2: !GetAtt FetchSpecificDataLambda.Arn
+        "IntegrationResponses": [{
+          "StatusCode": 200
+        }]
+      ResourceId: !Ref apiGatewaySpecificResourceProxy
+      RestApiId: !Ref apiGateway
+      "MethodResponses": [{
+        "StatusCode": 200
+      }]
+
+  lambda2ApiGatewayInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt FetchSpecificDataLambda.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${apiGateway}/*/*/*/*
+
+  apiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - apiGatewayRootMethod
+    Properties:
+      RestApiId: !Ref apiGateway
+      StageName: prod
+
+Outputs:
+  apiGatewayInvokeURL:
+    Value: !Sub https://${apiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod
+
+  lambdaArn:
+    Value: !GetAtt FetchAllDataLambda.Arn
+
+  lambdaArn2:
+    Value: !GetAtt FetchSpecificDataLambda.Arn
+
+  RoleArn: 
+    Value: !GetAtt LambdaRole.Arn   
